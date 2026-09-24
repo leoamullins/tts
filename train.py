@@ -75,6 +75,11 @@ def guided_attention_loss(attn, text_lens, mel_lens, sigma):
     return (attn * W[:, None]).sum() / (valid.sum() * H).clamp(min=1)
 
 
+def shift_right(mel):
+    # teacher forcing: decoder sees a zero "go" frame then frames 0..T-2
+    return F.pad(mel, (0, 0, 1, 0))[:, :-1]
+
+
 def lr_at(step):
     # linear warmup, then inverse-sqrt decay (Noam-style)
     step = max(step, 1)
@@ -114,7 +119,7 @@ def evaluate(model, val_dl, out_dir, step):
         text, text_lens, mel, mel_lens = (
             t.to(DEVICE) for t in (text, text_lens, mel, mel_lens)
         )
-        mel_pre, mel_post, stop_logits, attns = model(text, text_lens, mel, mel_lens)
+        mel_pre, mel_post, stop_logits, attns = model(text, text_lens, shift_right(mel))
         total += masked_l1(mel_post, mel, mel_lens).item()
         n += 1
         if (
@@ -159,7 +164,7 @@ def main():
                 g["lr"] = lr_at(step)
 
             mel_pre, mel_post, stop_logits, attns = model(
-                text, text_lens, mel, mel_lens
+                text, text_lens, shift_right(mel)
             )
 
             l_pre = masked_l1(mel_pre, mel, mel_lens)
